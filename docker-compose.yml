@@ -1,0 +1,37 @@
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      # The image installs production dependencies only, so the container
+      # runs in production mode. Use `npm run dev` on the host for
+      # development, where dev tooling is available.
+      NODE_ENV: production
+      PORT: "3000"
+      REDIS_URL: redis://cache:6379
+      STORAGE_DIR: /app/storage
+      LOG_LEVEL: info
+    volumes:
+      # Processed files survive a container restart.
+      - storage:/app/storage
+    depends_on:
+      cache:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    # A healthcheck so `depends_on` can wait for Redis to actually answer,
+    # not merely for its container to exist.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  storage:

@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    // Target a modern Node runtime; there is no browser here, so there
+    // is no reason to compile down to older JavaScript.
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+
+    // Where compiled JavaScript lands, and where the sources live.
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    // Strictness. These are the settings that make TypeScript actually
+    // catch things: no implicit `any`, null checks enforced, unused
+    // locals flagged. Turning them off is the usual reason people say
+    // "TypeScript didn't help me".
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Interop and ergonomics.
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    // Emit source maps so a stack trace points at the TypeScript line,
+    // not the compiled JavaScript one.
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

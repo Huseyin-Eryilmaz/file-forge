@@ -1,0 +1,10 @@
+node_modules/
+dist/
+storage/
+coverage/
+
+# local env
+.env
+
+*.log
+dump.rdb
