@@ -19,11 +19,18 @@ import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { logger } from './logger.js';
 import type { Config } from './config.js';
+import type { Storage } from './storage.js';
+import type { FileRepository } from './files/repository.js';
+import { createUploadRouter, uploadErrorHandler } from './files/routes.js';
 
 export interface AppDependencies {
   config: Config;
   /** Redis handle, or null when running without one (tests, degraded mode). */
   redis: Redis | null;
+  /** Where uploaded bytes go. Absent in tests that only exercise health. */
+  storage?: Storage;
+  /** What we remember about uploads. Absent alongside storage. */
+  files?: FileRepository;
 }
 
 export function createApp(deps: AppDependencies): Express {
@@ -106,6 +113,20 @@ export function createApp(deps: AppDependencies): Express {
       docs: '/health/ready',
     });
   });
+
+  // File routes, when the dependencies for them are present.
+  if (deps.storage && deps.files) {
+    app.use(
+      createUploadRouter({
+        storage: deps.storage,
+        files: deps.files,
+        maxUploadBytes: deps.config.maxUploadBytes,
+      }),
+    );
+    // Upload-specific error translation runs before the generic handler,
+    // so a too-large file becomes a 413 rather than a 500.
+    app.use(uploadErrorHandler);
+  }
 
   // 404 for anything unmatched, in the same JSON shape as other errors so
   // a client never has to parse two different formats.

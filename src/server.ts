@@ -9,9 +9,12 @@
  */
 
 import Redis from 'ioredis';
+import { mkdir } from 'node:fs/promises';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { LocalStorage } from './storage.js';
+import { FileRepository } from './files/repository.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -29,7 +32,14 @@ async function main(): Promise<void> {
     logger.error({ err }, 'redis_error');
   });
 
-  const app = createApp({ config, redis });
+  // Make sure the storage root exists before anything tries to write to
+  // it, rather than failing on the first upload.
+  await mkdir(config.storageDir, { recursive: true });
+
+  const storage = new LocalStorage(config.storageDir);
+  const files = new FileRepository(redis);
+
+  const app = createApp({ config, redis, storage, files });
 
   const server = app.listen(config.port, () => {
     logger.info(

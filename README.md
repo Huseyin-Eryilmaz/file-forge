@@ -8,8 +8,8 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 0 (skeleton).** The service boots, reports health,
-> and shuts down cleanly. Uploads arrive in Phase 1. See the
+> 🚧 **Status: Phase 1 (uploads).** Files can be uploaded, validated and
+> stored; background processing arrives in Phase 2. See the
 > [roadmap](ROADMAP.md).
 
 ## Why this design
@@ -54,6 +54,27 @@ Configuration comes from the environment; copy `.env.example` to `.env`
 to override defaults. Nothing reads `process.env` outside `src/config.ts`,
 so every setting is validated once at startup and a bad value fails
 immediately rather than at some later moment.
+
+## Uploading
+
+```bash
+curl -F "file=@photo.png" http://localhost:3000/uploads
+# -> {"id":"...","originalName":"photo.png","mimeType":"image/png","size":12345,...}
+
+curl http://localhost:3000/uploads/<id>
+```
+
+Uploads are streamed to a temporary file rather than buffered in memory,
+so a large file — or fifty concurrent ones — does not grow the heap. The
+storage key is generated, never derived from the submitted filename, so a
+name like `../../etc/passwd` cannot influence where bytes land; the
+original name is kept as metadata only.
+
+| Limit | Behaviour |
+|---|---|
+| Over `MAX_UPLOAD_BYTES` | `413 file_too_large` |
+| Type outside the allow-list | `415 unsupported_type` |
+| No file in the request | `400 no_file` |
 
 ## Health endpoints
 

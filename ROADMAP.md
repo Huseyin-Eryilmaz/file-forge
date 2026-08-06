@@ -10,10 +10,15 @@
 
 **Acceptance:** `docker compose up` serves health checks; tests pass.
 
-## Phase 1 — Uploads
-- [ ] Multipart upload with size and type validation
-- [ ] Storage abstraction (local disk now, S3-compatible later)
-- [ ] Temporary file lifecycle
+## Phase 1 — Uploads `v0.1.0` ✅
+- [x] Multipart upload (multer), streamed to a temp file — never buffered
+- [x] Size limit, MIME allow-list, filename sanitisation
+- [x] Storage abstraction with a local-disk implementation
+- [x] Generated storage keys: users never influence where bytes land
+- [x] Upload metadata in Redis with a TTL
+
+**Acceptance:** a file uploads and returns an id; oversized files get 413,
+unsupported types 415, and a traversal-shaped key is refused outright.
 
 ## Phase 2 — Queue and worker
 - [ ] BullMQ job queue on Redis
