@@ -9,10 +9,13 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worker": "node dist/jobs/worker.js",
+    "worker:dev": "tsx watch src/jobs/worker.ts"
   },
   "license": "MIT",
   "dependencies": {
+    "bullmq": "^6.0.8",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",

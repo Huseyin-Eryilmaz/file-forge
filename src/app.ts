@@ -22,6 +22,9 @@ import type { Config } from './config.js';
 import type { Storage } from './storage.js';
 import type { FileRepository } from './files/repository.js';
 import { createUploadRouter, uploadErrorHandler } from './files/routes.js';
+import { createJobRouter } from './jobs/routes.js';
+import type { Queue } from 'bullmq';
+import type { JobPayload } from './jobs/queue.js';
 
 export interface AppDependencies {
   config: Config;
@@ -31,6 +34,8 @@ export interface AppDependencies {
   storage?: Storage;
   /** What we remember about uploads. Absent alongside storage. */
   files?: FileRepository;
+  /** The processing queue. Absent in tests that do not exercise jobs. */
+  queue?: Queue<JobPayload>;
 }
 
 export function createApp(deps: AppDependencies): Express {
@@ -126,6 +131,10 @@ export function createApp(deps: AppDependencies): Express {
     // Upload-specific error translation runs before the generic handler,
     // so a too-large file becomes a 413 rather than a 500.
     app.use(uploadErrorHandler);
+  }
+
+  if (deps.queue && deps.files) {
+    app.use(createJobRouter({ queue: deps.queue, files: deps.files }));
   }
 
   // 404 for anything unmatched, in the same JSON shape as other errors so

@@ -15,6 +15,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { LocalStorage } from './storage.js';
 import { FileRepository } from './files/repository.js';
+import { createQueue } from './jobs/queue.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -39,7 +40,15 @@ async function main(): Promise<void> {
   const storage = new LocalStorage(config.storageDir);
   const files = new FileRepository(redis);
 
-  const app = createApp({ config, redis, storage, files });
+  // BullMQ needs its own connection with retries disabled off the request
+  // path; sharing the API's fail-fast connection breaks its blocking reads.
+  const queueConnection = new Redis(config.redisUrl, {
+    maxRetriesPerRequest: null,
+  });
+  queueConnection.on('error', (err) => logger.error({ err }, 'queue_redis_error'));
+  const queue = createQueue(queueConnection);
+
+  const app = createApp({ config, redis, storage, files, queue });
 
   const server = app.listen(config.port, () => {
     logger.info(
@@ -63,6 +72,8 @@ async function main(): Promise<void> {
         logger.error({ err }, 'server_close_failed');
       }
       try {
+        await queue.close();
+        await queueConnection.quit();
         await redis.quit();
       } catch (error) {
         logger.warn({ err: error }, 'redis_quit_failed');

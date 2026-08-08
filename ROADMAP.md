@@ -20,10 +20,16 @@
 **Acceptance:** a file uploads and returns an id; oversized files get 413,
 unsupported types 415, and a traversal-shaped key is refused outright.
 
-## Phase 2 — Queue and worker
-- [ ] BullMQ job queue on Redis
-- [ ] Separate worker process
-- [ ] Retries, failure handling, concurrency limits
+## Phase 2 — Queue and worker `v0.2.0` ✅
+- [x] BullMQ job queue on Redis
+- [x] Separate worker process, capped concurrency
+- [x] Retries with exponential backoff, permanent vs transient failures
+- [x] `POST /jobs` (202 Accepted) and `GET /jobs/:id` with progress
+- [x] Processor registry: adding an operation is one entry, not a switch
+- [x] Tests skip quickly and visibly when Redis is unavailable
+
+**Acceptance:** a queued job is picked up by the worker, reports progress,
+and its result is readable from the status endpoint.
 
 ## Phase 3 — Image processing
 - [ ] Resize, format conversion, thumbnails (sharp)

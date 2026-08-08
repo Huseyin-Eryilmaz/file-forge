@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +19,11 @@ import { loadConfig } from '../src/config.js';
 import { LocalStorage } from '../src/storage.js';
 import { FileRepository } from '../src/files/repository.js';
 import { sanitizeFilename, storageKeyFor } from '../src/files/upload.js';
+import { probeRedis, testRedis } from './helpers.js';
 
-const REDIS_URL = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379';
+// Probed once at load so the suites can be skipped outright when Redis is
+// absent, instead of each test individually discovering it is unusable.
+const available = await probeRedis();
 
 let redis: Redis;
 let storageRoot: string;
@@ -38,20 +41,24 @@ async function buildApp() {
 }
 
 beforeAll(async () => {
-  redis = new Redis(REDIS_URL, { maxRetriesPerRequest: 2 });
+  if (!available) return;
+  redis = testRedis('uploads');
   storageRoot = await mkdtemp(join(tmpdir(), 'file-forge-test-'));
 });
 
 afterAll(async () => {
+  if (!available) return;
   await redis.quit();
   await rm(storageRoot, { recursive: true, force: true });
 });
 
 beforeEach(async () => {
+  if (!available) return;
+  // Safe to flush: this suite has a Redis database to itself.
   await redis.flushdb();
 });
 
-describe('uploading a file', () => {
+describe.skipIf(!available)('uploading a file', () => {
   it('accepts an image and returns an id', async () => {
     const app = await buildApp();
 
@@ -132,7 +139,7 @@ describe('uploading a file', () => {
   });
 });
 
-describe('reading upload metadata', () => {
+describe.skipIf(!available)('reading upload metadata', () => {
   it('returns the record for a known id', async () => {
     const app = await buildApp();
     const created = await request(app)
@@ -157,7 +164,7 @@ describe('reading upload metadata', () => {
   });
 });
 
-describe('filename handling', () => {
+describe.skipIf(!available)('filename handling', () => {
   it('strips directory components', () => {
     // The classic path-traversal shape. The name is metadata only, but it
     // still must not carry separators into a header or a log line.
@@ -193,7 +200,7 @@ describe('filename handling', () => {
   });
 });
 
-describe('storage safety', () => {
+describe.skipIf(!available)('storage safety', () => {
   it('refuses a key that escapes the root', async () => {
     const storage = new LocalStorage(storageRoot);
 

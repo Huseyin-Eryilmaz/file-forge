@@ -8,9 +8,9 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 1 (uploads).** Files can be uploaded, validated and
-> stored; background processing arrives in Phase 2. See the
-> [roadmap](ROADMAP.md).
+> 🚧 **Status: Phase 2 (queue and worker).** Uploads are accepted and work
+> is queued to a separate worker process. Real image and CSV processing
+> arrives in Phases 3-4. See the [roadmap](ROADMAP.md).
 
 ## Why this design
 
@@ -75,6 +75,31 @@ original name is kept as metadata only.
 | Over `MAX_UPLOAD_BYTES` | `413 file_too_large` |
 | Type outside the allow-list | `415 unsupported_type` |
 | No file in the request | `400 no_file` |
+
+## Processing a file
+
+Upload first, then ask for work. The two are separate so a file can be
+processed more than once, with different settings each time.
+
+```bash
+# 1. upload
+curl -F "file=@photo.png" http://localhost:3000/uploads
+# -> {"id":"abc123",...}
+
+# 2. queue some work — returns immediately with 202 Accepted
+curl -X POST http://localhost:3000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"fileId":"abc123","operation":"image.resize"}'
+# -> {"id":"1","state":"queued",...}
+
+# 3. check on it
+curl http://localhost:3000/jobs/1
+# -> {"id":"1","state":"completed","progress":100,"result":{...}}
+```
+
+States are `queued`, `processing`, `retrying`, `completed`, `failed`.
+Failed jobs are retried three times with exponential backoff; a failure
+that will never succeed — a file that no longer exists — is not retried.
 
 ## Health endpoints
 

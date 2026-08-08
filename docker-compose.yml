@@ -20,6 +20,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # The worker runs the same image as the API but a different command.
+  # Separate processes on purpose: a worker busy resizing an image must
+  # never make an HTTP request wait, and the queue is scaled by adding
+  # workers, not API instances.
+  worker:
+    build: .
+    command: ["node", "dist/jobs/worker.js"]
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://cache:6379
+      STORAGE_DIR: /app/storage
+      LOG_LEVEL: info
+    volumes:
+      # The worker reads what the API wrote, so they share the volume.
+      - storage:/app/storage
+    depends_on:
+      cache:
+        condition: service_healthy
+    restart: unless-stopped
+
   cache:
     image: redis:7-alpine
     ports:
