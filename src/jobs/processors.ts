@@ -16,6 +16,7 @@ import type { Job } from 'bullmq';
 import type { Storage } from '../storage.js';
 import type { FileRepository } from '../files/repository.js';
 import type { JobPayload, Operation } from './queue.js';
+import { resizeImage, convertImage, thumbnailImage } from './image.js';
 
 export interface ProcessorContext {
   storage: Storage;
@@ -83,9 +84,11 @@ const placeholder: Processor = async ({ job, payload, context }) => {
 };
 
 export const processors: Record<Operation, Processor> = {
-  'image.resize': placeholder,
-  'image.convert': placeholder,
-  'image.thumbnail': placeholder,
+  'image.resize': resizeImage,
+  'image.convert': convertImage,
+  'image.thumbnail': thumbnailImage,
+  // CSV handling arrives in the next phase; until then these still run
+  // the placeholder, so the queue and status plumbing stay exercised.
   'csv.validate': placeholder,
   'csv.transform': placeholder,
 };

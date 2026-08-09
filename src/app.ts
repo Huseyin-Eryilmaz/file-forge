@@ -23,6 +23,7 @@ import type { Storage } from './storage.js';
 import type { FileRepository } from './files/repository.js';
 import { createUploadRouter, uploadErrorHandler } from './files/routes.js';
 import { createJobRouter } from './jobs/routes.js';
+import { createDownloadRouter } from './files/download.js';
 import type { Queue } from 'bullmq';
 import type { JobPayload } from './jobs/queue.js';
 
@@ -131,6 +132,10 @@ export function createApp(deps: AppDependencies): Express {
     // Upload-specific error translation runs before the generic handler,
     // so a too-large file becomes a 413 rather than a 500.
     app.use(uploadErrorHandler);
+  }
+
+  if (deps.storage) {
+    app.use(createDownloadRouter({ storage: deps.storage }));
   }
 
   if (deps.queue && deps.files) {

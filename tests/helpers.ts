@@ -30,6 +30,7 @@ const BASE_URL = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379';
 export const TEST_DB = {
   uploads: 1,
   jobs: 2,
+  images: 3,
 } as const;
 
 export type TestSuite = keyof typeof TEST_DB;

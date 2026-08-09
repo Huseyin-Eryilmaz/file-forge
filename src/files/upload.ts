@@ -38,6 +38,60 @@ export const ALLOWED_MIME_TYPES = new Set([
   'text/plain', // browsers often send .csv as text/plain
 ]);
 
+/**
+ * Extensions we accept when the declared type tells us nothing.
+ *
+ * Clients are unreliable narrators about content type. `curl` reports
+ * `application/octet-stream` for anything it does not recognise, and
+ * browsers disagree with each other about CSV. Falling back to the
+ * extension keeps those honest uploads working.
+ *
+ * This is not a security control. A caller can name a file anything, and
+ * declare any type — so both signals are only a cheap first filter. The
+ * real check happens when the processor opens the file and the content
+ * either parses as an image (or a CSV) or does not.
+ */
+export const ALLOWED_EXTENSIONS = new Map<string, string>([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
+  ['.tif', 'image/tiff'],
+  ['.tiff', 'image/tiff'],
+  ['.csv', 'text/csv'],
+]);
+
+/** Types so generic they carry no information about the content. */
+const UNINFORMATIVE_TYPES = new Set([
+  'application/octet-stream',
+  'binary/octet-stream',
+  '',
+]);
+
+/**
+ * Decides the effective type of an upload, or null if we will not take it.
+ *
+ * Order matters: a specific declared type wins, because it is the more
+ * direct statement. Only when it is missing or generic do we fall back to
+ * what the filename suggests.
+ */
+export function resolveMimeType(
+  declared: string,
+  filename: string,
+): string | null {
+  if (ALLOWED_MIME_TYPES.has(declared)) {
+    return declared;
+  }
+
+  if (UNINFORMATIVE_TYPES.has(declared)) {
+    const ext = filename.toLowerCase().slice(filename.lastIndexOf('.'));
+    return ALLOWED_EXTENSIONS.get(ext) ?? null;
+  }
+
+  return null;
+}
+
 export class UnsupportedFileTypeError extends Error {
   constructor(mimeType: string) {
     super(`Unsupported file type: ${mimeType}`);
@@ -91,10 +145,14 @@ export function createUploadMiddleware(maxBytes: number) {
       fields: 10,
     },
     fileFilter: (_req: Request, file, callback) => {
-      if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      const resolved = resolveMimeType(file.mimetype, file.originalname);
+      if (resolved === null) {
         callback(new UnsupportedFileTypeError(file.mimetype));
         return;
       }
+      // Carry the resolved type forward, so downstream code sees
+      // "image/png" rather than whatever generic label arrived.
+      file.mimetype = resolved;
       callback(null, true);
     },
   });

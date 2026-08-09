@@ -31,8 +31,17 @@ unsupported types 415, and a traversal-shaped key is refused outright.
 **Acceptance:** a queued job is picked up by the worker, reports progress,
 and its result is readable from the status endpoint.
 
-## Phase 3 — Image processing
-- [ ] Resize, format conversion, thumbnails (sharp)
+## Phase 3 — Image processing `v0.3.0` ✅
+- [x] Resize, format conversion, thumbnails (sharp / libvips)
+- [x] Stream-based: images are never held in memory in full
+- [x] Content validation — a file that only claims to be an image fails here
+- [x] Extension fallback when the declared MIME type is generic
+- [x] Bounded output dimensions
+- [x] Download endpoint for processed results
+
+**Acceptance:** a 1200x800 PNG resizes to 400x267, converts to WebP, and
+yields a 128px thumbnail; the output downloads and decodes as a real
+image; a fake image is rejected at processing time.
 
 ## Phase 4 — CSV processing and streams
 - [ ] Stream-based parsing: large files without loading them into memory

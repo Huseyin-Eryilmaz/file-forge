@@ -187,12 +187,16 @@ describe.skipIf(!available)('job execution', () => {
   });
 
   it('reports the job result once finished', async () => {
+    // Uses a CSV operation deliberately: this test is about the result
+    // being readable from the status endpoint, not about what any
+    // particular processor does. Image operations are covered separately,
+    // with real images and real options.
     const app = buildApp();
     const fileId = await uploadFile(app);
 
     const created = await request(app)
       .post('/jobs')
-      .send({ fileId, operation: 'image.resize' });
+      .send({ fileId, operation: 'csv.transform' });
 
     const final = await waitForJob(app, created.body.id);
     const result = final.result as { outputs: string[] };
