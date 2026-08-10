@@ -43,9 +43,16 @@ and its result is readable from the status endpoint.
 yields a 128px thumbnail; the output downloads and decodes as a real
 image; a fake image is rejected at processing time.
 
-## Phase 4 — CSV processing and streams
-- [ ] Stream-based parsing: large files without loading them into memory
-- [ ] Validation and transformation
+## Phase 4 — CSV processing and streams `v0.4.0` ✅
+- [x] Stream-based parsing: memory stays flat regardless of file size
+- [x] `csv.validate` — row counts, inconsistent rows, empty-value report
+- [x] `csv.transform` — column selection, trimming, empty-row removal
+- [x] `saveFrom` so a failure in any pipeline stage rejects, never hangs
+- [x] Permanent failures marked unrecoverable instead of retried
+- [x] Errors extracted to their own module, breaking an import cycle
+
+**Measured:** processing a 126 MB / 3M-row CSV peaks at ~13 MB of heap —
+the same as a 8 MB file, because nothing is ever held in full.
 
 ## Phase 5 — Job status and progress
 - [ ] Status endpoint

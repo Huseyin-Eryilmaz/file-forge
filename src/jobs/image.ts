@@ -22,15 +22,8 @@ import { z } from 'zod';
 import { extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Processor, ProcessorArgs, ProcessorResult } from './processors.js';
-import { MissingFileError } from './processors.js';
+import { MissingFileError, InvalidImageError } from './errors.js';
 
-/** Raised when the bytes are not an image we can decode. */
-export class InvalidImageError extends Error {
-  constructor(reason: string) {
-    super(`Not a readable image: ${reason}`);
-    this.name = 'InvalidImageError';
-  }
-}
 
 /**
  * Bounds on output dimensions.

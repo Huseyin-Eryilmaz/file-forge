@@ -28,6 +28,18 @@ export interface StoredFile {
 export interface Storage {
   /** Writes a stream under `key`, returning what was stored. */
   save(key: string, source: Readable): Promise<StoredFile>;
+  /**
+   * Writes the output of a multi-stage pipeline.
+   *
+   * Prefer this over piping the stages together and passing the tail to
+   * `save`: only when every stage is in one `pipeline` call does a
+   * failure in any of them reject rather than hang.
+   */
+  saveFrom(
+    key: string,
+    source: Readable,
+    ...stages: NodeJS.ReadWriteStream[]
+  ): Promise<StoredFile>;
   /** Moves an already-written local file into storage under `key`. */
   adopt(key: string, localPath: string): Promise<StoredFile>;
   /** Opens a stored file for reading. Throws if the key is unknown. */
@@ -69,7 +81,35 @@ export class LocalStorage implements Storage {
 
     // `pipeline` wires the streams together and — importantly — cleans up
     // both if either fails. Piping by hand leaks file handles on error.
+    //
+    // Note what this does *not* cover: if a caller builds a chain with
+    // `.pipe()` and hands over only its tail, a failure earlier in that
+    // chain never reaches here — the tail simply stops producing and this
+    // write waits for an end that never arrives. Callers that build
+    // multi-stage pipelines should use `saveFrom` instead.
     await pipeline(source, createWriteStream(target));
+
+    const { size } = await stat(target);
+    return { key, size };
+  }
+
+  /**
+   * Writes the result of a multi-stage pipeline.
+   *
+   * The stages are passed individually rather than pre-piped, so they can
+   * all go into one `pipeline` call. That is what makes a failure in any
+   * stage — a parser rejecting malformed input, a transform raising on a
+   * missing column — surface as a rejection here, instead of hanging.
+   */
+  async saveFrom(
+    key: string,
+    source: Readable,
+    ...stages: NodeJS.ReadWriteStream[]
+  ): Promise<StoredFile> {
+    const target = this.pathFor(key);
+    await mkdir(dirname(target), { recursive: true });
+
+    await pipeline(source, ...stages, createWriteStream(target));
 
     const { size } = await stat(target);
     return { key, size };

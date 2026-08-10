@@ -29,6 +29,11 @@ const CONTENT_TYPES: Record<string, string> = {
   '.gif': 'image/gif',
   '.tiff': 'image/tiff',
   '.csv': 'text/csv',
+  // Validation reports are JSON. Without this they would be served as
+  // octet-stream, which makes a browser download them instead of showing
+  // them, and makes HTTP clients treat the body as binary.
+  '.json': 'application/json',
+  '.txt': 'text/plain',
 };
 
 function contentTypeFor(key: string): string {

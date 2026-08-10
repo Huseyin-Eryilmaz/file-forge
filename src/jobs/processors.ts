@@ -16,7 +16,9 @@ import type { Job } from 'bullmq';
 import type { Storage } from '../storage.js';
 import type { FileRepository } from '../files/repository.js';
 import type { JobPayload, Operation } from './queue.js';
+export { MissingFileError } from './errors.js';
 import { resizeImage, convertImage, thumbnailImage } from './image.js';
+import { validateCsv, transformCsv } from './csv.js';
 
 export interface ProcessorContext {
   storage: Storage;
@@ -39,58 +41,13 @@ export interface ProcessorResult {
 
 export type Processor = (args: ProcessorArgs) => Promise<ProcessorResult>;
 
-/** Raised when a job asks for work on a file that is gone. */
-export class MissingFileError extends Error {
-  constructor(fileId: string) {
-    super(`No stored file with id ${fileId}`);
-    this.name = 'MissingFileError';
-  }
-}
-
-/**
- * A stand-in that proves the machinery without doing real work yet.
- *
- * It checks the file exists — the same first step every real processor
- * takes — and reports progress along the way, so the progress plumbing is
- * exercised from the start rather than bolted on later.
- */
-const placeholder: Processor = async ({ job, payload, context }) => {
-  const record = await context.files.get(payload.fileId);
-  if (record === null) {
-    // A missing file is not worth retrying: the file will not reappear.
-    throw new MissingFileError(payload.fileId);
-  }
-
-  const exists = await context.storage.exists(record.storageKey);
-  if (!exists) {
-    throw new MissingFileError(payload.fileId);
-  }
-
-  await job.updateProgress(25);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  await job.updateProgress(75);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  await job.updateProgress(100);
-
-  return {
-    outputs: [record.storageKey],
-    details: {
-      placeholder: true,
-      operation: payload.operation,
-      originalName: record.originalName,
-      size: record.size,
-    },
-  };
-};
 
 export const processors: Record<Operation, Processor> = {
   'image.resize': resizeImage,
   'image.convert': convertImage,
   'image.thumbnail': thumbnailImage,
-  // CSV handling arrives in the next phase; until then these still run
-  // the placeholder, so the queue and status plumbing stay exercised.
-  'csv.validate': placeholder,
-  'csv.transform': placeholder,
+  'csv.validate': validateCsv,
+  'csv.transform': transformCsv,
 };
 
 /**

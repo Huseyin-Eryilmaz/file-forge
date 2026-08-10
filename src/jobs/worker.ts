@@ -12,7 +12,7 @@
  * everything slower at the same time, and risks exhausting memory.
  */
 
-import { Worker, type Job } from 'bullmq';
+import { Worker, UnrecoverableError, type Job } from 'bullmq';
 import Redis from 'ioredis';
 import { mkdir } from 'node:fs/promises';
 import { config } from '../config.js';
@@ -20,9 +20,11 @@ import { childLogger } from '../logger.js';
 import { LocalStorage } from '../storage.js';
 import { FileRepository } from '../files/repository.js';
 import { QUEUE_NAME, type JobPayload } from './queue.js';
-import { runJob, MissingFileError, type ProcessorContext } from './processors.js';
+import { runJob, type ProcessorContext } from './processors.js';
+import { MissingFileError, isPermanentFailure } from './errors.js';
 
 const log = childLogger('worker');
+
 
 /** How many jobs this worker runs at once. */
 const CONCURRENCY = 3;
@@ -80,6 +82,17 @@ async function main(): Promise<void> {
           },
           'job_failed',
         );
+
+        // Some failures will never succeed on a retry: a file that is
+        // gone stays gone, and bytes that are not an image will not
+        // become one. Marking those unrecoverable stops BullMQ burning
+        // two more attempts — and two more backoff delays — on a result
+        // that is already known.
+        if (isPermanentFailure(error)) {
+          throw new UnrecoverableError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
         throw error;
       }
     },

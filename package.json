@@ -16,6 +16,8 @@
   "license": "MIT",
   "dependencies": {
     "bullmq": "^6.0.8",
+    "csv-parse": "^7.0.2",
+    "csv-stringify": "^6.8.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
