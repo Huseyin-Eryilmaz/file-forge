@@ -48,7 +48,14 @@ async function main(): Promise<void> {
   queueConnection.on('error', (err) => logger.error({ err }, 'queue_redis_error'));
   const queue = createQueue(queueConnection);
 
-  const app = createApp({ config, redis, storage, files, queue });
+  // A third connection, reserved for pub/sub: Redis refuses ordinary
+  // commands on a connection that has subscribed to anything.
+  const subscriber = new Redis(config.redisUrl, {
+    maxRetriesPerRequest: null,
+  });
+  subscriber.on('error', (err) => logger.error({ err }, 'subscriber_error'));
+
+  const app = createApp({ config, redis, storage, files, queue, subscriber });
 
   const server = app.listen(config.port, () => {
     logger.info(
@@ -73,6 +80,7 @@ async function main(): Promise<void> {
       }
       try {
         await queue.close();
+        await subscriber.quit();
         await queueConnection.quit();
         await redis.quit();
       } catch (error) {

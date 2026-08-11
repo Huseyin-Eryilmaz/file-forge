@@ -8,10 +8,9 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 4 (CSV streaming).** Images and CSVs are both
-> processed by the worker. CSV work is fully streamed, so a file far
-> larger than available memory is handled without trouble. Job progress
-> and lifecycle arrive next. See the [roadmap](ROADMAP.md).
+> 🚧 **Status: Phase 5 (live progress).** Job progress streams to
+> connected clients over Server-Sent Events. File lifecycle and the React
+> front end come next. See the [roadmap](ROADMAP.md).
 
 ## Why this design
 
@@ -143,6 +142,29 @@ type and, when that is generic, the file extension — both of which a
 caller controls. The real check is at processing time: sharp either
 decodes the bytes as an image or the job fails. A `.png` that is actually
 something else gets through the first check and fails the second.
+
+### Watching a job live
+
+Polling works, but the server can push instead:
+
+```bash
+curl -N http://localhost:3000/jobs/1/events
+```
+
+```
+data: {"jobId":"1","state":"processing","progress":10}
+
+data: {"jobId":"1","state":"processing","progress":80}
+
+data: {"jobId":"1","state":"completed","progress":100,"result":{...}}
+```
+
+Server-Sent Events rather than WebSockets, because updates only travel one
+way — and browsers reconnect dropped SSE streams on their own. The worker
+publishes to Redis, the API subscribes and forwards, so the two processes
+never need to talk directly. The stream opens with the job's current
+state (a client joining late still learns the outcome) and closes once
+the job settles.
 
 States are `queued`, `processing`, `retrying`, `completed`, `failed`.
 Failed jobs are retried three times with exponential backoff; a failure

@@ -22,6 +22,7 @@ import { FileRepository } from '../files/repository.js';
 import { QUEUE_NAME, type JobPayload } from './queue.js';
 import { runJob, type ProcessorContext } from './processors.js';
 import { MissingFileError, isPermanentFailure } from './errors.js';
+import { publishJobEvent } from './events.js';
 
 const log = childLogger('worker');
 
@@ -60,8 +61,22 @@ async function main(): Promise<void> {
         'job_started',
       );
 
+      await publishJobEvent(connection, {
+        jobId: String(job.id),
+        state: 'processing',
+        progress: 0,
+        operation: job.data.operation,
+      });
+
       try {
         const result = await runJob(job, context);
+        await publishJobEvent(connection, {
+          jobId: String(job.id),
+          state: 'completed',
+          progress: 100,
+          operation: job.data.operation,
+          result,
+        });
         log.info(
           {
             jobId: job.id,
@@ -88,10 +103,25 @@ async function main(): Promise<void> {
         // become one. Marking those unrecoverable stops BullMQ burning
         // two more attempts — and two more backoff delays — on a result
         // that is already known.
-        if (isPermanentFailure(error)) {
-          throw new UnrecoverableError(
-            error instanceof Error ? error.message : String(error),
-          );
+        const message = error instanceof Error ? error.message : String(error);
+        const permanent = isPermanentFailure(error);
+        const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+
+        // Only announce failure once it is final. Telling a watcher the
+        // job failed while a retry is still pending would be a lie that
+        // the next event contradicts.
+        if (permanent || lastAttempt) {
+          await publishJobEvent(connection, {
+            jobId: String(job.id),
+            state: 'failed',
+            progress: 0,
+            operation: job.data.operation,
+            error: message,
+          });
+        }
+
+        if (permanent) {
+          throw new UnrecoverableError(message);
         }
         throw error;
       }
@@ -116,6 +146,36 @@ async function main(): Promise<void> {
   worker.on('error', (err) => {
     log.error({ err }, 'worker_error');
   });
+
+  // Processors call `job.updateProgress(n)` as they work; BullMQ surfaces
+  // that here. Forwarding it is what turns a percentage buried in the
+  // worker into something a watching client actually sees.
+  //
+  // Progress is clamped to never decrease. The "job started" event and
+  // the first `updateProgress` call race with each other, and a bar that
+  // jumps forward and then back looks broken even though nothing is.
+  const highWater = new Map<string, number>();
+
+  worker.on('progress', (job, progress) => {
+    const id = String(job.id);
+    const value = typeof progress === 'number' ? progress : 0;
+    const previous = highWater.get(id) ?? 0;
+    if (value < previous) {
+      return;
+    }
+    highWater.set(id, value);
+
+    void publishJobEvent(connection, {
+      jobId: id,
+      state: 'processing',
+      progress: value,
+      operation: job.data?.operation,
+    });
+  });
+
+  // Forget a job's high-water mark once it settles, so the map does not
+  // grow for the lifetime of the process.
+  worker.on('completed', (job) => highWater.delete(String(job.id)));
 
   log.info({ concurrency: CONCURRENCY, queue: QUEUE_NAME }, 'worker_started');
 

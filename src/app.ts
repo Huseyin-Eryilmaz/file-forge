@@ -24,6 +24,7 @@ import type { FileRepository } from './files/repository.js';
 import { createUploadRouter, uploadErrorHandler } from './files/routes.js';
 import { createJobRouter } from './jobs/routes.js';
 import { createDownloadRouter } from './files/download.js';
+import { createEventRouter } from './jobs/sse.js';
 import type { Queue } from 'bullmq';
 import type { JobPayload } from './jobs/queue.js';
 
@@ -37,6 +38,13 @@ export interface AppDependencies {
   files?: FileRepository;
   /** The processing queue. Absent in tests that do not exercise jobs. */
   queue?: Queue<JobPayload>;
+  /**
+   * A Redis connection reserved for pub/sub.
+   *
+   * Subscribing puts a connection into a mode where it refuses ordinary
+   * commands, so this must be separate from `redis`.
+   */
+  subscriber?: Redis;
 }
 
 export function createApp(deps: AppDependencies): Express {
@@ -140,6 +148,12 @@ export function createApp(deps: AppDependencies): Express {
 
   if (deps.queue && deps.files) {
     app.use(createJobRouter({ queue: deps.queue, files: deps.files }));
+  }
+
+  if (deps.queue && deps.subscriber) {
+    app.use(
+      createEventRouter({ queue: deps.queue, subscriber: deps.subscriber }),
+    );
   }
 
   // 404 for anything unmatched, in the same JSON shape as other errors so

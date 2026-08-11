@@ -54,9 +54,15 @@ image; a fake image is rejected at processing time.
 **Measured:** processing a 126 MB / 3M-row CSV peaks at ~13 MB of heap —
 the same as a 8 MB file, because nothing is ever held in full.
 
-## Phase 5 — Job status and progress
-- [ ] Status endpoint
-- [ ] Live progress via Server-Sent Events
+## Phase 5 — Job status and progress `v0.5.0` ✅
+- [x] Live progress via Server-Sent Events (`GET /jobs/:id/events`)
+- [x] Redis pub/sub carrying events from the worker to the API
+- [x] Immediate first event, so a late subscriber is not left waiting
+- [x] Stream closes once the job settles; keep-alive and connection cap
+- [x] Progress never goes backwards
+
+**Acceptance:** connecting to a running job's stream shows progress
+arriving live and the connection closing on completion.
 
 ## Phase 6 — Results and lifecycle
 - [ ] Download endpoint, expiring links
