@@ -143,7 +143,13 @@ export function createApp(deps: AppDependencies): Express {
   }
 
   if (deps.storage) {
-    app.use(createDownloadRouter({ storage: deps.storage }));
+    app.use(
+      createDownloadRouter({
+        storage: deps.storage,
+        downloadSecret: deps.config.downloadSecret,
+        downloadTtlSeconds: deps.config.downloadTtlSeconds,
+      }),
+    );
   }
 
   if (deps.queue && deps.files) {

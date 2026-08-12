@@ -41,6 +41,31 @@ const ConfigSchema = z.object({
   logLevel: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
+
+  /**
+   * Secret used to sign download links.
+   *
+   * Empty means signing is off and `/files/...` is open — convenient
+   * while developing, where needing a signature to look at your own
+   * output is pure friction. Set it in production and every download
+   * needs a valid, unexpired signature.
+   */
+  downloadSecret: z.string().default(''),
+
+  /** How long a signed download link stays valid. */
+  downloadTtlSeconds: z.coerce.number().int().positive().default(15 * 60),
+
+  /**
+   * How long files survive before the cleanup job removes them.
+   *
+   * Uploads here are transient by design: a file arrives, is processed,
+   * is collected. Keeping them forever would fill the disk with things
+   * nobody will ask for again.
+   */
+  fileRetentionHours: z.coerce.number().int().positive().default(24),
+
+  /** How often the cleanup job runs. */
+  cleanupIntervalMinutes: z.coerce.number().int().positive().default(60),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -60,6 +85,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     storageDir: env.STORAGE_DIR,
     maxUploadBytes: env.MAX_UPLOAD_BYTES,
     logLevel: env.LOG_LEVEL,
+    downloadSecret: env.DOWNLOAD_SECRET,
+    downloadTtlSeconds: env.DOWNLOAD_TTL_SECONDS,
+    fileRetentionHours: env.FILE_RETENTION_HOURS,
+    cleanupIntervalMinutes: env.CLEANUP_INTERVAL_MINUTES,
   });
 
   if (!parsed.success) {

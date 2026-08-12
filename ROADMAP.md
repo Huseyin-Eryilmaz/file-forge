@@ -64,9 +64,17 @@ the same as a 8 MB file, because nothing is ever held in full.
 **Acceptance:** connecting to a running job's stream shows progress
 arriving live and the connection closing on completion.
 
-## Phase 6 — Results and lifecycle
-- [ ] Download endpoint, expiring links
-- [ ] Scheduled cleanup of old files
+## Phase 6 — Results and lifecycle `v0.6.0` ✅
+- [x] HMAC-signed download links with an expiry, off by default
+- [x] `POST /files/links` mints one; tampering or expiry is rejected
+- [x] Constant-time signature comparison
+- [x] Scheduled cleanup as a repeatable job, so several workers do not
+      sweep the same directory at once
+- [x] Retention and sweep interval configurable
+
+**Acceptance:** with a secret set, an unsigned download is 403, a tampered
+one 403, an expired one 410, a valid one 200; files past the retention
+window are removed and recent ones are not.
 
 ## Phase 7 — Hardening
 - [ ] Rate limiting, security headers, filename sanitisation

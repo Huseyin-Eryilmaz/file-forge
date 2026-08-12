@@ -12,7 +12,7 @@
  * everything slower at the same time, and risks exhausting memory.
  */
 
-import { Worker, UnrecoverableError, type Job } from 'bullmq';
+import { Queue, Worker, UnrecoverableError, type Job } from 'bullmq';
 import Redis from 'ioredis';
 import { mkdir } from 'node:fs/promises';
 import { config } from '../config.js';
@@ -23,6 +23,7 @@ import { QUEUE_NAME, type JobPayload } from './queue.js';
 import { runJob, type ProcessorContext } from './processors.js';
 import { MissingFileError, isPermanentFailure } from './errors.js';
 import { publishJobEvent } from './events.js';
+import { cleanupOldFiles } from './cleanup.js';
 
 const log = childLogger('worker');
 
@@ -177,7 +178,57 @@ async function main(): Promise<void> {
   // grow for the lifetime of the process.
   worker.on('completed', (job) => highWater.delete(String(job.id)));
 
-  log.info({ concurrency: CONCURRENCY, queue: QUEUE_NAME }, 'worker_started');
+  // --- scheduled maintenance -------------------------------------
+  //
+  // A repeatable job rather than a bare setInterval: with several workers
+  // running, an interval would have each of them sweeping the same
+  // directory at the same time. The queue guarantees one run per tick, on
+  // whichever worker is free.
+  const MAINTENANCE_QUEUE = 'file-maintenance';
+
+  const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection });
+  await maintenanceQueue.upsertJobScheduler(
+    'cleanup',
+    { every: config.cleanupIntervalMinutes * 60 * 1000 },
+    { name: 'cleanup', opts: { removeOnComplete: true, removeOnFail: 20 } },
+  );
+
+  const maintenanceWorker = new Worker(
+    MAINTENANCE_QUEUE,
+    async () => {
+      const result = await cleanupOldFiles(
+        config.storageDir,
+        config.fileRetentionHours,
+        Date.now(),
+        log,
+      );
+      log.info(
+        {
+          scanned: result.scanned,
+          deleted: result.deleted,
+          bytesFreed: result.bytesFreed,
+          errors: result.errors,
+        },
+        'cleanup_finished',
+      );
+      return result;
+    },
+    { connection, concurrency: 1 },
+  );
+
+  maintenanceWorker.on('error', (err) => {
+    log.error({ err }, 'maintenance_worker_error');
+  });
+
+  log.info(
+    {
+      concurrency: CONCURRENCY,
+      queue: QUEUE_NAME,
+      retentionHours: config.fileRetentionHours,
+      cleanupEveryMinutes: config.cleanupIntervalMinutes,
+    },
+    'worker_started',
+  );
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info({ signal }, 'shutdown_started');
@@ -192,6 +243,8 @@ async function main(): Promise<void> {
       // `close()` waits for jobs in flight to finish rather than killing
       // them mid-write, which would leave half-written output behind.
       await worker.close();
+      await maintenanceWorker.close();
+      await maintenanceQueue.close();
       await connection.quit();
       log.info('shutdown_complete');
       process.exit(0);

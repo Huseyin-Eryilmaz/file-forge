@@ -8,9 +8,9 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 5 (live progress).** Job progress streams to
-> connected clients over Server-Sent Events. File lifecycle and the React
-> front end come next. See the [roadmap](ROADMAP.md).
+> 🚧 **Status: Phase 6 (lifecycle).** Downloads can be signed and
+> time-limited, and old files are swept away on a schedule. Hardening and
+> the React front end come next. See the [roadmap](ROADMAP.md).
 
 ## Why this design
 
@@ -116,6 +116,32 @@ curl -o resized.png http://localhost:3000/files/outputs/<key>
 Aspect ratio is preserved by default and images are never enlarged.
 Output dimensions are capped, because an unbounded resize is a cheap way
 to exhaust memory.
+
+### Signed downloads
+
+Leaving `DOWNLOAD_SECRET` empty keeps `/files/...` open, which is what you
+want locally. Set it and every download needs a signature:
+
+```bash
+curl -X POST http://localhost:3000/files/links -H "Content-Type: application/json" -d '{"key":"outputs/photo-resized-1a2b.png"}'
+# -> {"url":"/files/outputs/...?expires=...&signature=...","expiresAt":"..."}
+```
+
+The signature is an HMAC over the key and the expiry, so a link cannot be
+forged, moved to another file, or given more time — editing any part of it
+invalidates it. Unsigned requests get 403, tampered ones 403, expired ones
+410. Nothing is stored server-side; the link carries its own proof.
+
+### Cleanup
+
+Uploads are transient, so files older than `FILE_RETENTION_HOURS` are
+deleted by a repeatable job every `CLEANUP_INTERVAL_MINUTES`. A repeatable
+job rather than an interval timer, because with several workers running an
+interval would have all of them sweeping the same directory at once.
+
+Redis metadata expires on its own, which is what makes the sweep
+necessary: without it you end up with bytes on disk that no record points
+at any more.
 
 ### Streaming, and why it matters
 

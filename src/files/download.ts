@@ -14,9 +14,17 @@
 import { Router, type Request, type Response } from 'express';
 import { basename } from 'node:path';
 import type { Storage } from '../storage.js';
+import {
+  createSignedLink,
+  signedQuery,
+  verifySignedLink,
+} from './signing.js';
 
 export interface DownloadRouterDeps {
   storage: Storage;
+  /** Empty disables signing, leaving downloads open. */
+  downloadSecret: string;
+  downloadTtlSeconds: number;
 }
 
 /** Content types for the formats this service produces. */
@@ -57,6 +65,32 @@ export function createDownloadRouter(deps: DownloadRouterDeps): Router {
       return;
     }
 
+    // Signing is off when no secret is configured, which keeps local
+    // development free of friction. With a secret set, every download
+    // must carry a valid, unexpired signature.
+    if (deps.downloadSecret) {
+      const expires = req.query.expires;
+      const signature = req.query.signature;
+      const result = verifySignedLink(
+        key,
+        typeof expires === 'string' ? expires : undefined,
+        typeof signature === 'string' ? signature : undefined,
+        deps.downloadSecret,
+      );
+
+      if (!result.ok) {
+        const status = result.reason === 'expired' ? 410 : 403;
+        res.status(status).json({
+          error: result.reason === 'expired' ? 'link_expired' : 'invalid_signature',
+          message:
+            result.reason === 'expired'
+              ? 'This download link has expired'
+              : 'This download link is not valid',
+        });
+        return;
+      }
+    }
+
     try {
       // `exists` also runs the storage layer's path check, so a key that
       // tries to escape the root is refused here rather than served.
@@ -82,6 +116,52 @@ export function createDownloadRouter(deps: DownloadRouterDeps): Router {
     );
 
     stream.pipe(res);
+  });
+
+  /**
+   * Mints a signed link for a stored file.
+   *
+   * Returns a plain path when signing is disabled, so callers can use the
+   * same flow in both configurations rather than branching on whether a
+   * secret happens to be set.
+   */
+  router.post('/files/links', async (req: Request, res: Response) => {
+    const key = typeof req.body?.key === 'string' ? req.body.key : '';
+
+    if (!key) {
+      res.status(422).json({
+        error: 'invalid_request',
+        message: 'Provide the storage key to sign',
+      });
+      return;
+    }
+
+    try {
+      if (!(await deps.storage.exists(key))) {
+        res.status(404).json({ error: 'not_found', message: 'No such file' });
+        return;
+      }
+    } catch {
+      res.status(404).json({ error: 'not_found', message: 'No such file' });
+      return;
+    }
+
+    if (!deps.downloadSecret) {
+      res.json({ url: `/files/${key}`, signed: false });
+      return;
+    }
+
+    const link = createSignedLink(
+      key,
+      deps.downloadSecret,
+      deps.downloadTtlSeconds,
+    );
+
+    res.json({
+      url: `/files/${key}?${signedQuery(link)}`,
+      signed: true,
+      expiresAt: new Date(link.expires * 1000).toISOString(),
+    });
   });
 
   return router;
