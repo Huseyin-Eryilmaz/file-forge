@@ -20,10 +20,11 @@ import { childLogger } from '../logger.js';
 import { LocalStorage } from '../storage.js';
 import { FileRepository } from '../files/repository.js';
 import { QUEUE_NAME, type JobPayload } from './queue.js';
-import { runJob, type ProcessorContext } from './processors.js';
-import { MissingFileError, isPermanentFailure } from './errors.js';
+import { runJobWithRetryPolicy, type ProcessorContext } from './processors.js';
+import { MissingFileError } from './errors.js';
 import { publishJobEvent } from './events.js';
 import { cleanupOldFiles } from './cleanup.js';
+import { incrementCounter } from '../metrics.js';
 
 const log = childLogger('worker');
 
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
       });
 
       try {
-        const result = await runJob(job, context);
+        const result = await runJobWithRetryPolicy(job, context);
         await publishJobEvent(connection, {
           jobId: String(job.id),
           state: 'completed',
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
           operation: job.data.operation,
           result,
         });
+        await incrementCounter(connection, 'jobs_completed_total');
         log.info(
           {
             jobId: job.id,
@@ -105,7 +107,9 @@ async function main(): Promise<void> {
         // two more attempts — and two more backoff delays — on a result
         // that is already known.
         const message = error instanceof Error ? error.message : String(error);
-        const permanent = isPermanentFailure(error);
+        // `runJobWithRetryPolicy` has already converted the failures that
+        // cannot be retried, so an UnrecoverableError here means final.
+        const permanent = error instanceof UnrecoverableError;
         const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 
         // Only announce failure once it is final. Telling a watcher the
@@ -119,11 +123,9 @@ async function main(): Promise<void> {
             operation: job.data.operation,
             error: message,
           });
+          await incrementCounter(connection, 'jobs_failed_total');
         }
 
-        if (permanent) {
-          throw new UnrecoverableError(message);
-        }
         throw error;
       }
     },
@@ -202,6 +204,7 @@ async function main(): Promise<void> {
         Date.now(),
         log,
       );
+      await incrementCounter(connection, 'files_cleaned_total', result.deleted);
       log.info(
         {
           scanned: result.scanned,

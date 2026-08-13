@@ -24,6 +24,20 @@ export class InvalidImageError extends Error {
   }
 }
 
+/**
+ * The job's options are not usable — a resize with no dimensions, a
+ * format we cannot produce, a column that does not exist.
+ *
+ * Permanent by nature: the same job with the same options will fail the
+ * same way on every attempt, so retrying only delays the answer.
+ */
+export class InvalidOptionsError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'InvalidOptionsError';
+  }
+}
+
 /** The bytes do not parse as CSV. */
 export class InvalidCsvError extends Error {
   constructor(reason: string) {
@@ -37,6 +51,7 @@ export function isPermanentFailure(error: unknown): boolean {
   return (
     error instanceof MissingFileError ||
     error instanceof InvalidImageError ||
-    error instanceof InvalidCsvError
+    error instanceof InvalidCsvError ||
+    error instanceof InvalidOptionsError
   );
 }

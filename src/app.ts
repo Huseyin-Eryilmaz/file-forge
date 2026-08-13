@@ -25,6 +25,9 @@ import { createUploadRouter, uploadErrorHandler } from './files/routes.js';
 import { createJobRouter } from './jobs/routes.js';
 import { createDownloadRouter } from './files/download.js';
 import { createEventRouter } from './jobs/sse.js';
+import helmet from 'helmet';
+import { createRateLimiter, RATE_LIMITS } from './ratelimit.js';
+import { createMetricsRouter } from './metrics.js';
 import type { Queue } from 'bullmq';
 import type { JobPayload } from './jobs/queue.js';
 
@@ -52,7 +55,29 @@ export function createApp(deps: AppDependencies): Express {
 
   // Trust the proxy's forwarded headers when running behind one, so
   // client IPs and protocol are the real ones rather than the proxy's.
+  // Rate limiting depends on this: without it every request would appear
+  // to come from the load balancer and share one counter.
   app.set('trust proxy', true);
+
+  // Security headers. What each one buys:
+  //   - X-Content-Type-Options stops a browser second-guessing a declared
+  //     content type, which is how an uploaded file gets treated as script.
+  //   - X-Frame-Options refuses framing, blocking clickjacking.
+  //   - Strict-Transport-Security pins future visits to HTTPS.
+  //   - X-Powered-By is removed, since naming the framework only helps
+  //     someone matching known exploits against it.
+  //
+  // CSP is disabled: this service returns JSON and files, never HTML, so
+  // a policy governing script sources has nothing to govern — and the
+  // default policy interferes with serving images inline.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      // Downloads set their own disposition; letting helmet force
+      // `nosniff` alongside a correct Content-Type is enough here.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   // JSON body parsing. File uploads are multipart and handled separately
   // in a later phase; this covers ordinary JSON requests.
@@ -77,6 +102,33 @@ export function createApp(deps: AppDependencies): Express {
       },
     }),
   );
+
+  // Metrics and status are mounted before the rate limiters: a scraper
+  // polling every fifteen seconds must never be throttled, or the
+  // monitoring goes blind exactly when traffic is highest.
+  app.use(
+    createMetricsRouter({
+      redis: deps.redis,
+      queue: deps.queue,
+      version: '0.7.0',
+      startedAt: Date.now(),
+    }),
+  );
+
+  const readLimiter = createRateLimiter(deps.redis, RATE_LIMITS.read);
+  const uploadLimiter = createRateLimiter(deps.redis, RATE_LIMITS.upload);
+  const jobLimiter = createRateLimiter(deps.redis, RATE_LIMITS.job);
+  const statusLimiter = createRateLimiter(deps.redis, RATE_LIMITS.status);
+
+  /** Routes job traffic to the right limiter: writes are dear, reads cheap. */
+  const jobTraffic = (
+    req: import('express').Request,
+    res: import('express').Response,
+    next: import('express').NextFunction,
+  ): void => {
+    const limiter = req.method === 'POST' ? jobLimiter : statusLimiter;
+    void limiter(req, res, next);
+  };
 
   /**
    * Liveness: is the process up?
@@ -131,10 +183,12 @@ export function createApp(deps: AppDependencies): Express {
   // File routes, when the dependencies for them are present.
   if (deps.storage && deps.files) {
     app.use(
+      uploadLimiter,
       createUploadRouter({
         storage: deps.storage,
         files: deps.files,
         maxUploadBytes: deps.config.maxUploadBytes,
+        redis: deps.redis,
       }),
     );
     // Upload-specific error translation runs before the generic handler,
@@ -144,6 +198,7 @@ export function createApp(deps: AppDependencies): Express {
 
   if (deps.storage) {
     app.use(
+      readLimiter,
       createDownloadRouter({
         storage: deps.storage,
         downloadSecret: deps.config.downloadSecret,
@@ -153,7 +208,14 @@ export function createApp(deps: AppDependencies): Express {
   }
 
   if (deps.queue && deps.files) {
-    app.use(createJobRouter({ queue: deps.queue, files: deps.files }));
+    app.use(
+      jobTraffic,
+      createJobRouter({
+        queue: deps.queue,
+        files: deps.files,
+        redis: deps.redis,
+      }),
+    );
   }
 
   if (deps.queue && deps.subscriber) {

@@ -25,7 +25,7 @@ import { loadConfig } from '../src/config.js';
 import { LocalStorage } from '../src/storage.js';
 import { FileRepository } from '../src/files/repository.js';
 import { createQueue, QUEUE_NAME, type JobPayload } from '../src/jobs/queue.js';
-import { runJob } from '../src/jobs/processors.js';
+import { runJobWithRetryPolicy } from '../src/jobs/processors.js';
 import { publishJobEvent, type JobEvent } from '../src/jobs/events.js';
 import { probeRedis, testRedis, queueRedis } from './helpers.js';
 
@@ -64,7 +64,7 @@ beforeAll(async () => {
         operation: job.data.operation,
       });
       try {
-        const result = await runJob(job, { storage, files });
+        const result = await runJobWithRetryPolicy(job, { storage, files });
         await publishJobEvent(wConn, {
           jobId: String(job.id),
           state: 'completed',

@@ -20,7 +20,7 @@ import { loadConfig } from '../src/config.js';
 import { LocalStorage } from '../src/storage.js';
 import { FileRepository } from '../src/files/repository.js';
 import { createQueue, QUEUE_NAME, type JobPayload } from '../src/jobs/queue.js';
-import { runJob } from '../src/jobs/processors.js';
+import { runJobWithRetryPolicy } from '../src/jobs/processors.js';
 import { probeRedis, testRedis, queueRedis } from './helpers.js';
 
 const available = await probeRedis();
@@ -45,7 +45,7 @@ beforeAll(async () => {
   const files = new FileRepository(redis);
   worker = new Worker<JobPayload>(
     QUEUE_NAME,
-    (job) => runJob(job, { storage, files }),
+    (job) => runJobWithRetryPolicy(job, { storage, files }),
     { connection: wConn, concurrency: 2 },
   );
 });
@@ -104,8 +104,13 @@ async function runOperation(
     const response = await request(app).get(`/jobs/${created.body.id}`);
     last = response.body;
     if (last.state === 'failed') return last;
-    if (last.state === 'completed' && last.result !== undefined) return last;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // `!= null` catches both null and undefined. BullMQ marks a job
+    // completed and writes its return value in separate steps, so there is
+    // a window where the state says done but the result is still null —
+    // narrow enough to never appear on a fast machine, wide enough to make
+    // this flaky on a slow one.
+    if (last.state === 'completed' && last.result != null) return last;
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return last;
 }

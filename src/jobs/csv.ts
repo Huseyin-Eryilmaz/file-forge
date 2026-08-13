@@ -26,7 +26,11 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import type { Processor, ProcessorArgs, ProcessorResult } from './processors.js';
-import { MissingFileError, InvalidCsvError } from './errors.js';
+import {
+  MissingFileError,
+  InvalidCsvError,
+  InvalidOptionsError,
+} from './errors.js';
 
 
 /**
@@ -101,7 +105,9 @@ export const validateCsv: Processor = async (
 ): Promise<ProcessorResult> => {
   const parsed = ValidateOptionsSchema.safeParse(args.payload.options);
   if (!parsed.success) {
-    throw new Error(`Invalid validate options: ${parsed.error.issues[0]?.message}`);
+    throw new InvalidOptionsError(
+      `Invalid validate options: ${parsed.error.issues[0]?.message}`,
+    );
   }
   const options = parsed.data;
 
@@ -231,7 +237,7 @@ export const transformCsv: Processor = async (
 ): Promise<ProcessorResult> => {
   const parsed = TransformOptionsSchema.safeParse(args.payload.options);
   if (!parsed.success) {
-    throw new Error(
+    throw new InvalidOptionsError(
       `Invalid transform options: ${parsed.error.issues[0]?.message}`,
     );
   }

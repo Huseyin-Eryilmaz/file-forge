@@ -20,7 +20,7 @@ import { loadConfig } from '../src/config.js';
 import { LocalStorage } from '../src/storage.js';
 import { FileRepository } from '../src/files/repository.js';
 import { createQueue, QUEUE_NAME, type JobPayload } from '../src/jobs/queue.js';
-import { runJob } from '../src/jobs/processors.js';
+import { runJobWithRetryPolicy } from '../src/jobs/processors.js';
 import { probeRedis, testRedis, queueRedis } from './helpers.js';
 
 // Probed once at load so the suites can be skipped outright when Redis is
@@ -49,7 +49,7 @@ beforeAll(async () => {
   const files = new FileRepository(redis);
   worker = new Worker<JobPayload>(
     QUEUE_NAME,
-    (job) => runJob(job, { storage, files }),
+    (job) => runJobWithRetryPolicy(job, { storage, files }),
     { connection: wConn, concurrency: 2 },
   );
 });
@@ -115,10 +115,13 @@ async function waitForJob(
     if (last.state === 'failed') {
       return last;
     }
-    if (last.state === 'completed' && last.result !== undefined) {
+    // `!= null` catches both null and undefined: BullMQ writes the state
+    // and the return value in separate steps, leaving a brief window where
+    // a completed job still reports a null result.
+    if (last.state === 'completed' && last.result != null) {
       return last;
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
   return last;
 }

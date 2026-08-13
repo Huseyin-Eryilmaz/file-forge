@@ -76,9 +76,18 @@ arriving live and the connection closing on completion.
 one 403, an expired one 410, a valid one 200; files past the retention
 window are removed and recent ones are not.
 
-## Phase 7 — Hardening
-- [ ] Rate limiting, security headers, filename sanitisation
-- [ ] Observability
+## Phase 7 — Hardening `v0.7.0` ✅
+- [x] Rate limiting per endpoint class, backed by Redis, failing open
+- [x] Security headers via helmet, with the reasoning documented
+- [x] `/status` (JSON) and `/metrics` (Prometheus), never rate limited
+- [x] Counters in Redis, so API restarts do not lose the worker's numbers
+- [x] Retry policy shared between worker and tests, so both exercise the
+      same behaviour — invalid options and unreadable files now fail once
+      instead of three times
+
+**Acceptance:** 24 rapid uploads yield 429s after the limit; `/metrics`
+still answers while a client is throttled; a permanently-failing job
+settles on its first attempt.
 
 ## Phase 8-9 — React front end
 - [ ] Drag-and-drop upload, live progress, result preview

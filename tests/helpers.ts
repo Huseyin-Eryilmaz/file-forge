@@ -33,6 +33,7 @@ export const TEST_DB = {
   images: 3,
   csv: 4,
   sse: 5,
+  hardening: 6,
 } as const;
 
 export type TestSuite = keyof typeof TEST_DB;

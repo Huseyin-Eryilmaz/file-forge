@@ -22,7 +22,11 @@ import { z } from 'zod';
 import { extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Processor, ProcessorArgs, ProcessorResult } from './processors.js';
-import { MissingFileError, InvalidImageError } from './errors.js';
+import {
+  MissingFileError,
+  InvalidImageError,
+  InvalidOptionsError,
+} from './errors.js';
 
 
 /**
@@ -141,7 +145,9 @@ async function runPipeline(
 export const resizeImage: Processor = async (args): Promise<ProcessorResult> => {
   const parsed = ResizeOptionsSchema.safeParse(args.payload.options);
   if (!parsed.success) {
-    throw new Error(`Invalid resize options: ${parsed.error.issues[0]?.message}`);
+    throw new InvalidOptionsError(
+      `Invalid resize options: ${parsed.error.issues[0]?.message}`,
+    );
   }
   const options = parsed.data;
 
@@ -183,7 +189,9 @@ export const resizeImage: Processor = async (args): Promise<ProcessorResult> => 
 export const convertImage: Processor = async (args): Promise<ProcessorResult> => {
   const parsed = ConvertOptionsSchema.safeParse(args.payload.options);
   if (!parsed.success) {
-    throw new Error(`Invalid convert options: ${parsed.error.issues[0]?.message}`);
+    throw new InvalidOptionsError(
+      `Invalid convert options: ${parsed.error.issues[0]?.message}`,
+    );
   }
   const { format, quality } = parsed.data;
 
@@ -210,7 +218,9 @@ export const convertImage: Processor = async (args): Promise<ProcessorResult> =>
 export const thumbnailImage: Processor = async (args): Promise<ProcessorResult> => {
   const parsed = ThumbnailOptionsSchema.safeParse(args.payload.options);
   if (!parsed.success) {
-    throw new Error(`Invalid thumbnail options: ${parsed.error.issues[0]?.message}`);
+    throw new InvalidOptionsError(
+      `Invalid thumbnail options: ${parsed.error.issues[0]?.message}`,
+    );
   }
   const { size } = parsed.data;
 

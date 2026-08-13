@@ -12,6 +12,8 @@ import type { Queue } from 'bullmq';
 import { z } from 'zod';
 import type { FileRepository } from '../files/repository.js';
 import { OperationSchema, type JobPayload } from './queue.js';
+import { incrementCounter } from '../metrics.js';
+import type { Redis } from 'ioredis';
 
 const CreateJobSchema = z.object({
   fileId: z.string().min(1),
@@ -22,6 +24,8 @@ const CreateJobSchema = z.object({
 export interface JobRouterDeps {
   queue: Queue<JobPayload>;
   files: FileRepository;
+  /** Used for counters only. */
+  redis?: Redis | null;
 }
 
 /** Maps BullMQ's internal states onto a small, stable public vocabulary. */
@@ -84,6 +88,8 @@ export function createJobRouter(deps: JobRouterDeps): Router {
       { jobId: job.id, operation: parsed.data.operation, fileId: parsed.data.fileId },
       'job_queued',
     );
+
+    await incrementCounter(deps.redis ?? null, 'jobs_queued_total');
 
     res.status(202).json({
       id: job.id,

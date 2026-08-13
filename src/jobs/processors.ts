@@ -12,11 +12,12 @@
  * failure handling — is already what it will be.
  */
 
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import type { Storage } from '../storage.js';
 import type { FileRepository } from '../files/repository.js';
 import type { JobPayload, Operation } from './queue.js';
 export { MissingFileError } from './errors.js';
+import { isPermanentFailure } from './errors.js';
 import { resizeImage, convertImage, thumbnailImage } from './image.js';
 import { validateCsv, transformCsv } from './csv.js';
 
@@ -76,4 +77,34 @@ export async function runJob(
   }
 
   return processor({ job, payload: parsed.data, context });
+}
+
+/**
+ * Runs a job and converts failures that a retry cannot fix.
+ *
+ * Some failures will never succeed on a second attempt: a file that is
+ * gone stays gone, and bytes that are not an image will not become one.
+ * Marking those unrecoverable stops BullMQ burning two more attempts —
+ * and two more backoff delays — on a result that is already known.
+ *
+ * This lives beside `runJob` rather than inside the worker because the
+ * tests drive jobs through the same path. When the retry policy lived
+ * only in the worker file, tests exercised a version of the pipeline that
+ * retried permanent failures three times, which is both slower and not
+ * what production does.
+ */
+export async function runJobWithRetryPolicy(
+  job: Job<JobPayload>,
+  context: ProcessorContext,
+): Promise<ProcessorResult> {
+  try {
+    return await runJob(job, context);
+  } catch (error) {
+    if (isPermanentFailure(error)) {
+      throw new UnrecoverableError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    throw error;
+  }
 }

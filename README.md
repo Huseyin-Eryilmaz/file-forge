@@ -8,9 +8,9 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 6 (lifecycle).** Downloads can be signed and
-> time-limited, and old files are swept away on a schedule. Hardening and
-> the React front end come next. See the [roadmap](ROADMAP.md).
+> 🚧 **Status: Phase 7 (hardening).** Rate limits, security headers and
+> metrics are in place; the backend is feature-complete. The React front
+> end comes next. See the [roadmap](ROADMAP.md).
 
 ## Why this design
 
@@ -195,6 +195,35 @@ the job settles.
 States are `queued`, `processing`, `retrying`, `completed`, `failed`.
 Failed jobs are retried three times with exponential backoff; a failure
 that will never succeed — a file that no longer exists — is not retried.
+
+## Limits and monitoring
+
+Every endpoint class has its own allowance, because they do not cost the
+same: an upload consumes disk, a job consumes CPU, and asking after a job
+consumes almost nothing.
+
+| Traffic | Per minute |
+|---|---|
+| Reads and downloads | 120 |
+| Uploads | 20 |
+| Job creation | 40 |
+| Job status polling | 300 |
+
+Over the limit gives `429` with a `Retry-After` header. Counters live in
+Redis so the limit holds across however many API processes are running —
+and the limiter **fails open**: if Redis is unreachable requests are
+allowed through, because a rate limiter that takes the service down has
+done more damage than the traffic it was guarding against.
+
+Two views of the same numbers:
+
+```bash
+curl http://localhost:3000/status    # JSON, for a person
+curl http://localhost:3000/metrics   # Prometheus, for a scraper
+```
+
+Both are mounted ahead of the rate limiters, so monitoring keeps working
+exactly when traffic is highest.
 
 ## Health endpoints
 

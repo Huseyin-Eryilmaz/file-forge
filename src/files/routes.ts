@@ -20,11 +20,15 @@ import {
   storageKeyFor,
   UnsupportedFileTypeError,
 } from './upload.js';
+import { incrementCounter } from '../metrics.js';
+import type { Redis } from 'ioredis';
 
 export interface UploadRouterDeps {
   storage: Storage;
   files: FileRepository;
   maxUploadBytes: number;
+  /** Used for counters only; absent means metrics are simply not recorded. */
+  redis?: Redis | null;
 }
 
 export function createUploadRouter(deps: UploadRouterDeps): Router {
@@ -67,6 +71,13 @@ export function createUploadRouter(deps: UploadRouterDeps): Router {
         req.log?.info(
           { fileId: record.id, size: record.size, type: record.mimeType },
           'file_uploaded',
+        );
+
+        await incrementCounter(deps.redis ?? null, 'uploads_total');
+        await incrementCounter(
+          deps.redis ?? null,
+          'bytes_uploaded_total',
+          record.size,
         );
 
         res.status(201).json({
