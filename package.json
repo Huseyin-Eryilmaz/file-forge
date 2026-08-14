@@ -39,5 +39,9 @@
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./dist/server.js",
+    "./contract": "./src/shared/contract.ts"
+  }
 }

@@ -18,23 +18,15 @@
  */
 
 import type { Redis } from 'ioredis';
-import { z } from 'zod';
 
 const CHANNEL_PREFIX = 'job-events:';
 
-export const JobEventSchema = z.object({
-  jobId: z.string(),
-  /** Where the job is now, in the same vocabulary the status endpoint uses. */
-  state: z.enum(['queued', 'processing', 'completed', 'failed']),
-  progress: z.number().min(0).max(100),
-  operation: z.string().optional(),
-  /** Present on completion. */
-  result: z.unknown().optional(),
-  /** Present on failure. */
-  error: z.string().optional(),
-});
-
-export type JobEvent = z.infer<typeof JobEventSchema>;
+/**
+ * The event shape, shared with the browser so a change to it breaks the
+ * build rather than the UI.
+ */
+export { JobEventSchema, type JobEvent } from '../shared/contract.js';
+import { JobEventSchema, type JobEvent } from '../shared/contract.js';
 
 export function channelFor(jobId: string): string {
   return `${CHANNEL_PREFIX}${jobId}`;

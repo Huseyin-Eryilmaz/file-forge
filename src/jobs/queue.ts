@@ -20,19 +20,11 @@ export const QUEUE_NAME = 'file-processing';
 /**
  * The kinds of work this service knows how to do.
  *
- * Kept as a schema rather than a bare string so an unknown operation is
- * rejected at the API boundary, before a job is created that no worker
- * would know what to do with.
+ * Re-exported from the shared contract rather than declared here, so the
+ * browser and the server cannot disagree about what operations exist.
  */
-export const OperationSchema = z.enum([
-  'image.resize',
-  'image.convert',
-  'image.thumbnail',
-  'csv.validate',
-  'csv.transform',
-]);
-
-export type Operation = z.infer<typeof OperationSchema>;
+export { OperationSchema, type Operation } from '../shared/contract.js';
+import { OperationSchema } from '../shared/contract.js';
 
 /**
  * What a job carries.
