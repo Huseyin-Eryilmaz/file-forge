@@ -89,8 +89,16 @@ window are removed and recent ones are not.
 still answers while a client is throttled; a permanently-failing job
 settles on its first attempt.
 
-## Phase 8-9 — React front end
-- [ ] Drag-and-drop upload, live progress, result preview
+## Phase 8 — React front end `v0.8.0` ✅
+- [x] Vite + React + TypeScript, sharing the backend's API contract
+- [x] Drag-and-drop upload with a depth-counted highlight
+- [x] Operation picker showing only what applies to the file's kind
+- [x] Live progress bar driven by `EventSource`, not polling
+- [x] Result preview and download via server-issued links
+- [x] Responses parsed through Zod schemas rather than cast
+
+**Acceptance:** drop an image, pick resize, watch the bar fill from live
+events, and download the result.
 
 ## Phase 10 — Showcase `v1.0.0`
 - [ ] README, architecture diagram, screenshots, release

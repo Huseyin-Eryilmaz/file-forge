@@ -1,122 +1,114 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+/**
+ * The whole flow, in one screen: drop a file, pick what to do with it,
+ * watch it happen, collect the result.
+ *
+ * State lives here rather than in the components because the steps are
+ * connected — an upload resets any previous job, a running job disables
+ * the dropzone. Pushing that coordination down into the children would
+ * mean each of them knowing about the others.
+ */
+
+import { useState } from 'react';
+import { DropZone } from './components/DropZone';
+import { OperationPicker } from './components/OperationPicker';
+import { ProgressCard } from './components/ProgressCard';
+import { ResultCard } from './components/ResultCard';
+import { useJobProgress } from './useJobProgress';
+import { uploadFile, createJob, formatBytes, ApiRequestError } from './api';
+import { kindForMimeType, type Operation, type UploadResponse } from '@contract';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [upload, setUpload] = useState<UploadResponse | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const progress = useJobProgress(jobId);
+  const running =
+    progress.state === 'queued' || progress.state === 'processing';
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    // A new file means any previous job's progress and result are stale.
+    setJobId(null);
+    try {
+      setUpload(await uploadFile(file));
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Upload failed');
+      setUpload(null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRun = async (
+    operation: Operation,
+    options: Record<string, unknown>,
+  ) => {
+    if (!upload) return;
+    setError(null);
+    try {
+      const job = await createJob(upload.id, operation, options);
+      setJobId(job.id);
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : 'Could not start the job',
+      );
+    }
+  };
+
+  const kind = upload ? kindForMimeType(upload.mimeType) : null;
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="container">
+      <header className="header">
+        <h1>file-forge</h1>
+        <p>
+          Upload an image or CSV. The work happens in the background, and you
+          can watch it as it goes.
+        </p>
+      </header>
 
-      <div className="ticks"></div>
+      <DropZone onFile={handleFile} disabled={uploading || running} />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      {uploading && <p className="status">Uploading…</p>}
+      {error && <p className="status status--error">{error}</p>}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {upload && (
+        <section className="card">
+          <h2>{upload.originalName}</h2>
+          <dl className="facts">
+            <div>
+              <dt>Type</dt>
+              <dd>{upload.mimeType}</dd>
+            </div>
+            <div>
+              <dt>Size</dt>
+              <dd>{formatBytes(upload.size)}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+
+      {upload && kind && (
+        <OperationPicker
+          // Remounts the picker when the file kind changes, so its selected
+          // operation and option fields reset. Without this, switching from an
+          // image to a CSV leaves the previous image operation selected — the
+          // state was initialised once and prop changes do not revisit it.
+          key={kind}
+          kind={kind}
+          disabled={running}
+          onRun={handleRun}
+        />
+      )}
+
+      <ProgressCard progress={progress} />
+      <ResultCard outputs={progress.outputs} />
+    </div>
+  );
 }
 
-export default App
+export default App;

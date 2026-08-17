@@ -16,11 +16,18 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* The shared API contract. Declared here so the editor and `tsc`
+       resolve `@contract` the same way Vite does; without it the import
+       works at runtime but shows as an error while writing code. */
+    "paths": {
+      "@contract": ["../src/shared/contract.ts"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "../src/shared/contract.ts"]
 }

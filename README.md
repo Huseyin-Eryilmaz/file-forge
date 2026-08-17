@@ -8,9 +8,9 @@ them rather than loading them into memory.
 Built with Node.js, Express and TypeScript, with Redis-backed job queues
 and a React front end.
 
-> 🚧 **Status: Phase 7 (hardening).** Rate limits, security headers and
-> metrics are in place; the backend is feature-complete. The React front
-> end comes next. See the [roadmap](ROADMAP.md).
+> 🚧 **Status: Phase 8 (front end).** A React interface over the whole
+> flow: drop a file, choose an operation, watch progress arrive live, and
+> download the result. See the [roadmap](ROADMAP.md).
 
 ## Why this design
 
@@ -24,6 +24,27 @@ process picks it up.
 That split is what makes the rest possible: progress reporting, retries
 on failure, and processing several files at once without the API ever
 slowing down.
+
+## The interface
+
+```bash
+docker compose up -d      # API, worker, Redis
+cd frontend && npm run dev
+```
+
+Then open http://localhost:5173.
+
+The frontend imports the backend's `src/shared/contract.ts` directly, so
+the two cannot disagree about what the API looks like — rename a field on
+the server and the frontend stops compiling, rather than reading
+`undefined` in a browser somewhere. The contract is the only backend file
+the frontend touches, and it imports nothing but Zod, so no server
+dependency is dragged into the bundle.
+
+Progress comes from `EventSource` rather than polling, so the bar moves as
+the work happens. Download URLs are requested from the server rather than
+built by hand, which means the same code works whether or not signed
+downloads are switched on.
 
 ## Quick start
 
