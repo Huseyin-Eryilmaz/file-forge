@@ -1,16 +1,28 @@
 # file-forge
 
-A file processing service: upload a file, it gets processed in the
-background, and you collect the result when it is done. Images are
-resized and converted; CSVs are validated and transformed by streaming
-them rather than loading them into memory.
+Upload a file, and it gets processed in the background while you watch the
+progress arrive live. Images are resized, converted and thumbnailed; CSVs
+are validated and cleaned by **streaming** them, so a file far larger than
+available memory goes through without trouble.
 
-Built with Node.js, Express and TypeScript, with Redis-backed job queues
-and a React front end.
+Node.js, Express and TypeScript on the back; React on the front; Redis-backed
+job queues in between. **113 tests**, all green.
 
-> 🚧 **Status: Phase 8 (front end).** A React interface over the whole
-> flow: drop a file, choose an operation, watch progress arrive live, and
-> download the result. See the [roadmap](ROADMAP.md).
+<!-- Replace with your own screenshot; see docs/screenshots/README.md -->
+![The interface](docs/screenshots/interface.png)
+![Progress](docs/screenshots/progress.png)
+
+The number this project exists to demonstrate:
+
+```
+rows         file size    peak heap
+   10,000       0.4 MB       4.8 MB
+  200,000       8.0 MB      12.7 MB
+1,000,000      40.7 MB      12.5 MB
+3,000,000     126.3 MB      12.9 MB
+```
+
+The file grows by a factor of three hundred; the heap does not move.
 
 ## Why this design
 
@@ -45,6 +57,45 @@ Progress comes from `EventSource` rather than polling, so the bar moves as
 the work happens. Download URLs are requested from the server rather than
 built by hand, which means the same code works whether or not signed
 downloads are switched on.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser"]
+        UI["React app<br/>(Vite + TypeScript)"]
+    end
+
+    subgraph compose["Docker Compose"]
+        API["Express API"]
+        Worker["Worker<br/>(BullMQ)"]
+        Redis[("Redis<br/>queue · pub/sub · counters")]
+        Disk[("Storage<br/>uploads · outputs")]
+    end
+
+    UI -->|"upload, create job"| API
+    UI -.->|"SSE: live progress"| API
+    API -->|enqueue| Redis
+    API --> Disk
+    Redis -->|dequeue| Worker
+    Worker --> Disk
+    Worker -.->|"publish progress"| Redis
+    Redis -.->|"subscribe"| API
+
+    style Disk fill:#f0f0f0,stroke:#999
+```
+
+Three processes, one image. The API and the worker are separate on
+purpose: resizing a large image or parsing a million-row CSV takes
+seconds, and doing that inside an HTTP request would hold the caller's
+connection open, occupy the server, and leave no way to retry. So the API
+does the least it can — accept the file, return a job id — and the worker
+picks the work up from the queue.
+
+The dotted arrows are the live-progress path. The worker knows the
+percentage; the browser needs it; the two never speak. Redis pub/sub
+carries events from one to the other, and the API forwards them to
+whoever is watching over Server-Sent Events.
 
 ## Quick start
 
@@ -262,6 +313,36 @@ a broken Redis, so a Redis blip must not trigger a restart loop.
 
 Node.js 22, Express 5, TypeScript, Redis (ioredis), Zod for validation,
 pino for structured logging, Vitest for tests, Docker Compose.
+
+## Project layout
+
+```
+src/
+├── app.ts           Express app: middleware, routing, error shape
+├── server.ts        API entry point
+├── config.ts        validated settings; nothing else reads process.env
+├── storage.ts       Storage interface + local-disk implementation
+├── ratelimit.ts     Redis-backed limiter, per endpoint class
+├── metrics.ts       /status and /metrics
+├── files/           uploads, downloads, signed links, metadata
+├── jobs/            queue, worker, processors, SSE, cleanup
+└── shared/          the API contract, imported by both sides
+frontend/src/        React app: dropzone, picker, progress, results
+tests/               113 tests against real Redis
+```
+
+## What it demonstrates
+
+- **Streaming over buffering.** CSV work never holds a file in memory;
+  the measurements above are the point of the design, not a side effect.
+- **Background work.** Queue, retries with backoff, capped concurrency,
+  and failures separated into those worth retrying and those that are not.
+- **Live updates without WebSockets.** Redis pub/sub from worker to API,
+  Server-Sent Events from API to browser.
+- **One contract, two sides.** The frontend imports the server's type
+  definitions, so drift is a compile error rather than a runtime surprise.
+- **Failing open.** Rate limiting, metrics and progress publishing all
+  degrade rather than break when Redis is unavailable.
 
 ## License
 

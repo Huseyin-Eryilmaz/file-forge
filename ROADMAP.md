@@ -100,5 +100,8 @@ settles on its first attempt.
 **Acceptance:** drop an image, pick resize, watch the bar fill from live
 events, and download the result.
 
-## Phase 10 — Showcase `v1.0.0`
-- [ ] README, architecture diagram, screenshots, release
+## Phase 9 — Showcase `v1.0.0` ✅
+- [x] README with the streaming measurements up front
+- [x] Mermaid architecture diagram, including the live-progress path
+- [x] Screenshots, project layout, and what the project demonstrates
+- [x] Release

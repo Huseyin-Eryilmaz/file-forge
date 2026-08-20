@@ -94,10 +94,11 @@ function App() {
 
       {upload && kind && (
         <OperationPicker
-          // Remounts the picker when the file kind changes, so its selected
-          // operation and option fields reset. Without this, switching from an
-          // image to a CSV leaves the previous image operation selected — the
-          // state was initialised once and prop changes do not revisit it.
+          // Remounts the picker when the file kind changes, which resets
+          // its selected operation and option fields. Without this,
+          // switching from an image to a CSV leaves the previous image
+          // operation selected: the state was initialised once, and React
+          // does not revisit an initial value when props change.
           key={kind}
           kind={kind}
           disabled={running}
